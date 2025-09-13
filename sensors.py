@@ -79,6 +79,7 @@ def prepare_lidar_bp(bl):
     bp.set_attribute('channels', str(config.LIDAR_CHANNELS))
     bp.set_attribute('points_per_second', str(config.LIDAR_PPS))
     bp.set_attribute('rotation_frequency', str(config.LIDAR_ROTATION_HZ))
+    bp.set_attribute('horizontal_fov','360') 
     bp.set_attribute('upper_fov', str(config.LIDAR_UPPER_FOV))
     bp.set_attribute('lower_fov', str(config.LIDAR_LOWER_FOV))
     bp.set_attribute('sensor_tick', str(config.LIDAR_SENSOR_TICK))

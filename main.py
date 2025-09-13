@@ -3,7 +3,7 @@ import os
 from PIL import Image
 import config
 from utils import make_directory
-from carla_setup import init_world, spawn_vehicle
+from carla_setup import init_world, spawn_vehicle, spawn_npc_ahead   # ★ 追加
 from sensors import attach_cameras, attach_radars, attach_lidar
 from timeline import compute_sample_times, pick_keyframes_and_copy
 from nuscenes_writer import write_nuscenes_jsons
@@ -26,6 +26,16 @@ def main():
     # CARLA
     client, world, bl = init_world()
     prius = spawn_vehicle(world, bl)
+
+    # ★ 前方NPCを必要ならスポーン
+    npc_actor = None
+    if getattr(config, "NPC_ENABLED", False):
+        npc_actor = spawn_npc_ahead(
+            world, bl, prius,
+            distance_m=config.NPC_AHEAD_METERS,
+            autopilot=config.NPC_AUTOPILOT,
+            z_offset=getattr(config, "NPC_SPAWN_Z_OFFSET", 0.5),
+        )
 
     samples_dir, sweeps_dir = ensure_dirs()
 
@@ -70,7 +80,8 @@ def main():
     # 後片付け
     for a in cam_actors: a.destroy()
     for a in radar_actors: a.destroy()
-    lidar_actor.destroy()
+    if lidar_actor: lidar_actor.destroy()
+    if npc_actor: npc_actor.destroy()     # ★ 追加
     prius.destroy()
 
 if __name__ == "__main__":

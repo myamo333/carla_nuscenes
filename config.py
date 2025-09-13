@@ -2,7 +2,7 @@
 CARLA_HOST = "192.168.11.20"
 CARLA_PORT = 2000
 TOWN = "Town02"
-DURATION_SEC = 30
+DURATION_SEC = 20
 
 # 画像
 IMG_W = 1600
@@ -18,7 +18,7 @@ RADAR_RANGE = 250
 LIDAR_RANGE = 120
 LIDAR_CHANNELS = 32
 LIDAR_PPS = 600000
-LIDAR_ROTATION_HZ = 20
+LIDAR_ROTATION_HZ = 60
 LIDAR_UPPER_FOV = 10
 LIDAR_LOWER_FOV = -30
 LIDAR_SENSOR_TICK = 1.0 / LIDAR_ROTATION_HZ
@@ -38,8 +38,8 @@ CAM_PARAMS = [
     (-1.5, 0,   2,    0,    "70"),
     ( 1.5, 0.7, 2,   55,    "70"),
     ( 1.5,-0.7, 2,  -55,    "70"),
-    (-0.7, 0,   2, -110,    "70"),
     (-1.5, 0,   2,  180,   "110"),
+    (-0.7, 0,   2, -110,    "70"),
     (-0.7, 0,   2,  110,    "70"),
 ]
 
@@ -62,3 +62,10 @@ LIDAR_NAME = "LIDAR_TOP"
 
 # サンプル時刻
 SAMPLE_INTERVAL_US = 500_000  # 0.5s
+
+# ===== NPC (前方に置く車) =====
+NPC_ENABLED = True               # 置きたいとき True
+NPC_MODEL = "vehicle.tesla.model3"  # 見つからなければ自動で別モデルを試します
+NPC_AHEAD_METERS = 10.0          # 自車（Prius）の前方距離[m]
+NPC_AUTOPILOT = False            # True にすると交通流に乗って走ります
+NPC_SPAWN_Z_OFFSET = 0.5         # 地面から少し浮かせてスポーン（地面貫通防止）
