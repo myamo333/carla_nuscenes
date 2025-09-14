@@ -15,7 +15,7 @@ def prepare_camera_bps(bl):
     cam_70 = bl.find('sensor.camera.rgb')
     _set_camera_attr(cam_70, 70)
     cam_110 = bl.find('sensor.camera.rgb')
-    _set_camera_attr(cam_110, 100)
+    _set_camera_attr(cam_110, 110)
     return cam_70, cam_110
 
 def attach_cameras(world, bl, vehicle, sweeps_dir):
