@@ -10,7 +10,7 @@ def init_world():
     return client, world, bl
 
 def spawn_vehicle(world, bl):
-    prius_bp = bl.find("vehicle.toyota.prius")
+    prius_bp = bl.find("vehicle.audi.tt")
     spawn = world.get_map().get_spawn_points()[0]
     prius = world.spawn_actor(prius_bp, spawn)
     return prius

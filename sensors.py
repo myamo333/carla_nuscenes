@@ -4,6 +4,7 @@ import shutil
 import carla
 import config
 from utils import make_directory
+import math
 
 def _set_camera_attr(bp, fov: float):
     bp.set_attribute('image_size_x', str(config.IMG_W))
@@ -17,6 +18,53 @@ def prepare_camera_bps(bl):
     cam_110 = bl.find('sensor.camera.rgb')
     _set_camera_attr(cam_110, 110)
     return cam_70, cam_110
+
+# [ADDED] ===== nuScenes → CARLA 変換ユーティリティ =====
+def _quat_wxyz_to_rotmat(qw, qx, qy, qz):
+    w, x, y, z = float(qw), float(qx), float(qy), float(qz)
+    return np.array([
+        [1-2*(y*y+z*z),   2*(x*y - z*w),    2*(x*z + y*w)],
+        [2*(x*y + z*w),   1-2*(x*x+z*z),    2*(y*z - x*w)],
+        [2*(x*z - y*w),   2*(y*z + x*w),    1-2*(x*x+y*y)],
+    ], dtype=float)
+
+def _rotmat_to_rpy_deg(R):
+    pitch = math.degrees(math.asin(-float(R[2,0])))
+    roll  = math.degrees(math.atan2(float(R[2,1]), float(R[2,2])))
+    yaw   = math.degrees(math.atan2(float(R[1,0]), float(R[0,0])))
+    return roll, pitch, yaw
+
+def nus_cam_to_carla_transform(translation, rotation_wxyz):
+    """
+    nuScenes calibrated_sensor (translation, rotation[wxyz]=sensor→ego) → CARLA Transform（カメラ用）
+    座標軸:
+      nuScenes ego:  x前, y左, z上
+      nuScenes cam:  x右, y下, z前
+      CARLA(ego/センサ): x前, y右, z上
+    """
+    # 平行移動: y 反転
+    x, y, z = [float(v) for v in translation]
+    loc = carla.Location(x=x, y=-y, z=z)
+
+    # 回転: R_se (sensor→ego) を取得 → 逆回転 R_es = R_se^T
+    qw, qx, qy, qz = [float(v) for v in rotation_wxyz]
+    R_se = _quat_wxyz_to_rotmat(qw, qx, qy, qz)
+    # R_es = R_se.T
+
+    # 軸変換: R_car = C_cam @ R_es @ S_ego
+    S_ego = np.diag([1, -1, 1])  # nuScenes ego → CARLA ego
+    C_cam = np.array([[0, 0, 1],  # nuScenes cam → CARLA cam（(x',y',z') = (z, x, -y)）
+                      [1, 0, 0],
+                      [0,-1, 0]], dtype=float)
+
+    R_car = S_ego @ R_se @ C_cam.T     
+    roll, pitch, yaw = _rotmat_to_rpy_deg(R_car)
+    rot = carla.Rotation(roll=roll, pitch=pitch, yaw=yaw)
+    return loc, rot
+
+def hfov_from_intrinsics(K, img_w):
+    fx = float(K[0][0])
+    return math.degrees(2.0 * math.atan(img_w / (2.0 * fx)))
 
 def attach_cameras(world, bl, vehicle, sweeps_dir):
     cam_70_bp, cam_110_bp = prepare_camera_bps(bl)
@@ -33,13 +81,41 @@ def attach_cameras(world, bl, vehicle, sweeps_dir):
             captured[cam_name].append({"frame": frame, "path": path, "timestamp": ts})
         return callback
 
-    for (x, y, z, yaw, fov_type), name in zip(config.CAM_PARAMS, config.CAM_NAMES):
-        bp = cam_110_bp if fov_type == "110" else cam_70_bp
-        trans = carla.Transform(carla.Location(x=x, y=y, z=z), carla.Rotation(yaw=yaw))
-        actor = world.spawn_actor(bp, trans, attach_to=vehicle)
-        actor.listen(make_callback(name))
-        actors.append(actor)
-        make_directory(os.path.join(sweeps_dir, name))
+    # [ADDED] CAM_PARAMS を name->param に引き直す（後方互換のため）
+    _param_by_name = {name: p for p, name in zip(config.CAM_PARAMS, config.CAM_NAMES)}
+
+    for name in config.CAM_NAMES:
+        if hasattr(config, "CAM_CONFIGS") and name in config.CAM_CONFIGS:
+            # [ADDED] ==== nuScenes 実キャリブでスポーン ====
+            cal = config.CAM_CONFIGS[name]
+            # cfg は config.CAM_CONFIGS[name] から取り出した nuScenes の値
+            loc, rot = nus_cam_to_carla_transform(cal["translation"], cal["rotation_wxyz"])
+            bp = bl.find('sensor.camera.rgb')
+            
+            # intrinsics からFOV算出（既存の関数でOK）
+            if cal.get("intrinsic"):
+                fov = hfov_from_intrinsics(cal["intrinsic"], config.IMG_W)
+            else:
+                fov = config.CAM_DEFAULT_FOV
+            bp.set_attribute('image_size_x', str(config.IMG_W))
+            bp.set_attribute('image_size_y', str(config.IMG_H))
+            bp.set_attribute('fov', f'{hfov_from_intrinsics(cal["intrinsic"], config.IMG_W):.6f}')
+            bp.set_attribute('sensor_tick', str(config.CAM_SENSOR_TICK))
+            
+            actor = world.spawn_actor(bp, carla.Transform(loc, rot), attach_to=vehicle)
+            actor.listen(make_callback(name))
+            actors.append(actor)
+            make_directory(os.path.join(sweeps_dir, name))
+        else:
+            # [UNCHANGED] ==== 従来の CAM_PARAMS でスポーン ====
+            (x, y, z, yaw, fov_type) = _param_by_name[name]
+            bp = cam_110_bp if fov_type == "110" else cam_70_bp
+            trans = carla.Transform(carla.Location(x=x, y=y, z=z), carla.Rotation(yaw=yaw))
+            actor = world.spawn_actor(bp, trans, attach_to=vehicle)
+            actor.listen(make_callback(name))
+            actors.append(actor)
+            make_directory(os.path.join(sweeps_dir, name))
+
     return actors, captured
 
 def prepare_radar_bp(bl):
