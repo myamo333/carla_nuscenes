@@ -1,8 +1,17 @@
 import os
 import uuid
+import math
 from datetime import datetime
 import config
 from utils import save_json, link_prev_next
+
+
+def _yaw_deg_to_quat_wxyz(yaw_deg: float):
+    """Return [w, x, y, z] quaternion for a yaw rotation about +Z.
+    nuScenes stores quaternions as [w, x, y, z].
+    """
+    half = math.radians(yaw_deg) / 2.0
+    return [math.cos(half), 0.0, 0.0, math.sin(half)]
 
 def write_nuscenes_jsons(base_dir,
                          sample_times,
@@ -56,27 +65,37 @@ def write_nuscenes_jsons(base_dir,
         "translation": [0,0,0]
     }]
 
-    # sensor.json / calibrated_sensor.json（元実装同様のダミー）
+    # sensor.json / calibrated_sensor.json
     sensor_json, calib_json = [], []
     per_cam_tokens = {}
-    for cam_name in config.CAM_NAMES:
+    # FOV per camera from config.CAM_PARAMS ("70" or "110")
+    cam_fovs = {name: (110.0 if fov == "110" else 70.0)
+                for (x, y, z, yaw, fov), name in zip(config.CAM_PARAMS, config.CAM_NAMES)}
+    for (x, y, z, yaw, _fov), cam_name in zip(config.CAM_PARAMS, config.CAM_NAMES):
         s_token, c_token = str(uuid.uuid4()), str(uuid.uuid4())
         per_cam_tokens[cam_name] = (s_token, c_token)
         sensor_json.append({
             "token": s_token, "modality": "camera",
             "name": cam_name, "channel": cam_name
         })
+        # Intrinsics from FOV
+        fov_deg = cam_fovs[cam_name]
+        f = 0.5 * config.IMG_W / math.tan(math.radians(fov_deg / 2))
+        # Extrinsics: CARLA(y右+) → nuScenes(y左+) で y 反転、yaw も符号反転
+        t = [float(x), float(-y), float(z)]
+        q = _yaw_deg_to_quat_wxyz(-float(yaw))
         calib_json.append({
             "token": c_token, "sensor_token": s_token,
-            "translation": [0,0,0], "rotation": [0,0,0,1],
+            "translation": t, "rotation": q,
             "camera_intrinsic": [
-                [config.IMG_W, 0, config.IMG_W/2],
-                [0, config.IMG_H, config.IMG_H/2],
+                [f, 0, config.IMG_W/2],
+                [0, f, config.IMG_H/2],
                 [0, 0, 1]
             ]
         })
 
     per_radar_tokens = {}
+    radar_param_by_name = {name: (x, y, z, yaw) for (x, y, z, yaw, name) in config.RADAR_PARAMS}
     for rname in config.RADAR_NAMES:
         s_token, c_token = str(uuid.uuid4()), str(uuid.uuid4())
         per_radar_tokens[rname] = (s_token, c_token)
@@ -84,9 +103,12 @@ def write_nuscenes_jsons(base_dir,
             "token": s_token, "modality": "radar",
             "name": rname, "channel": rname
         })
+        x, y, z, yaw = radar_param_by_name[rname]
+        t = [float(x), float(-y), float(z)]
+        q = _yaw_deg_to_quat_wxyz(-float(yaw))
         calib_json.append({
             "token": c_token, "sensor_token": s_token,
-            "translation": [0,0,0], "rotation": [0,0,0,1],
+            "translation": t, "rotation": q,
             "camera_intrinsic": []
         })
 
@@ -95,9 +117,10 @@ def write_nuscenes_jsons(base_dir,
         "token": lidar_s_token, "modality": "lidar",
         "name": config.LIDAR_NAME, "channel": config.LIDAR_NAME
     })
+    # LIDAR mount (sensors.attach_lidar): (0,0,2.5), yaw=0
     calib_json.append({
         "token": lidar_c_token, "sensor_token": lidar_s_token,
-        "translation": [0,0,0], "rotation": [0,0,0,1],
+        "translation": [0.0, 0.0, 2.5], "rotation": _yaw_deg_to_quat_wxyz(0.0),
         "camera_intrinsic": []
     })
 
@@ -110,7 +133,11 @@ def write_nuscenes_jsons(base_dir,
         rel = src_path.replace(os.sep + "sweeps" + os.sep, os.sep + "samples" + os.sep)
         rel = rel.replace(base_dir + os.sep, "")
         if fileformat == "pcd":
-            rel = rel.replace(".bin", ".pcd")
+            # If already .pcd.bin keep it. If plain .bin, change to .pcd
+            if rel.endswith(".pcd.bin"):
+                pass
+            elif rel.endswith(".bin"):
+                rel = rel[:-4] + ".pcd"
         sample_data_json.append({
             "token": str(uuid.uuid4()),
             "sample_token": sample_token,
@@ -143,7 +170,7 @@ def write_nuscenes_jsons(base_dir,
     for idx in range(len(sample_times)):
         src = key_lidar_for_idx.get(idx)
         if src:
-            add_sd(idx, (lidar_s_token, lidar_c_token), src, "bin")
+            add_sd(idx, (lidar_s_token, lidar_c_token), src, "pcd")
 
     # sweeps: 非keyframe
     def nearest_sample_index(ts):
@@ -205,7 +232,7 @@ def write_nuscenes_jsons(base_dir,
             "calibrated_sensor_token": lidar_c_token,
             "sensor_token": lidar_s_token,
             "filename": rel,
-            "fileformat": "bin",
+            "fileformat": "pcd",
             "is_key_frame": False,
             "timestamp": meas["timestamp"],
             "width": 0,

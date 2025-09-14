@@ -95,13 +95,21 @@ def attach_lidar(world, bl, vehicle, sweeps_dir):
     def callback(lidar_data: carla.LidarMeasurement):
         ts = int(lidar_data.timestamp * 1e6)
         frame = lidar_data.frame
-        path = os.path.join(sweeps_dir, config.LIDAR_NAME, f"{config.LIDAR_NAME}_{frame}.bin")
+        # nuScenesのLiDARは拡張子が .pcd.bin（中身は5floatバイナリ）
+        path = os.path.join(
+            sweeps_dir,
+            config.LIDAR_NAME,
+            f"{config.LIDAR_NAME}_{frame}.pcd.bin",
+        )
         make_directory(os.path.dirname(path))
 
-        # 現状: CARLAは (x,y,z,intensity) の4floatで来る
-        pts4 = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4)
+        # 現状: CARLAは (x,y,z,intensity) の4floatで来る（CARLA軸: x前+, y右+, z上+）
+        # frombuffer は読み取り専用なので、後段の変換のために copy() で書き込み可能にする。
+        pts4 = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4).copy()
+        # nuScenes軸: x前+, y左+, z上+ → y を反転
+        pts4[:, 1] *= -1.0
 
-        # 追加: nuScenesが期待する 5float に合わせて ring=0 列を追加
+        # 追加: nuScenesが期待する 5floatに合わせて ring=0 列を追加
         ring = np.zeros((pts4.shape[0], 1), dtype=np.float32)
         pts5 = np.hstack([pts4, ring]).astype(np.float32)
 
