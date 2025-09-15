@@ -32,20 +32,9 @@ CAM_NAMES = [
     "CAM_FRONT", "CAM_FRONT_RIGHT", "CAM_FRONT_LEFT",
     "CAM_BACK", "CAM_BACK_LEFT", "CAM_BACK_RIGHT"
 ]
-# cam_params: (x, y, z, yaw, fov_type)
-# fov_type: "70" または "110"（使うBPを切替）
-CAM_PARAMS = [
-    (-1.5, 0,   2,    0,    "70"),
-    ( 1.5, 0.7, 2,   55,    "70"),
-    ( 1.5,-0.7, 2,  -55,    "70"),
-    (-1.5, 0,   2,  180,   "110"),
-    (-0.7, 0,   2, -110,    "70"),
-    (-0.7, 0,   2,  110,    "70"),
-]
 
 # ========== nuScenes 由来のカメラ実キャリブ（必要分だけ追加） ==========
 # ここに sensor.json / calibrated_sensor.json から手で抜き出した数値を入れる。
-# 記載がある ch はこの値を使って spawn。未記載の ch は従来の CAM_PARAMS を使う。
 CAM_CONFIGS = {
     "CAM_FRONT": {
         "translation": [1.72200568478, 0.00475453292289, 1.49491291905],

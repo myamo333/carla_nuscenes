@@ -68,32 +68,35 @@ def write_nuscenes_jsons(base_dir,
     # sensor.json / calibrated_sensor.json
     sensor_json, calib_json = [], []
     per_cam_tokens = {}
-    # FOV per camera from config.CAM_PARAMS ("70" or "110")
-    cam_fovs = {name: (110.0 if fov == "110" else 70.0)
-                for (x, y, z, yaw, fov), name in zip(config.CAM_PARAMS, config.CAM_NAMES)}
-    for (x, y, z, yaw, _fov), cam_name in zip(config.CAM_PARAMS, config.CAM_NAMES):
+
+    # ---- カメラ: config.CAM_CONFIGS をそのまま出力 ----
+    for cam_name in config.CAM_NAMES:
+        if cam_name not in config.CAM_CONFIGS:
+            raise KeyError(f"config.CAM_CONFIGS に {cam_name} の定義がありません。")
+
         s_token, c_token = str(uuid.uuid4()), str(uuid.uuid4())
         per_cam_tokens[cam_name] = (s_token, c_token)
+
         sensor_json.append({
-            "token": s_token, "modality": "camera",
-            "name": cam_name, "channel": cam_name
-        })
-        # Intrinsics from FOV
-        fov_deg = cam_fovs[cam_name]
-        f = 0.5 * config.IMG_W / math.tan(math.radians(fov_deg / 2))
-        # Extrinsics: CARLA(y右+) → nuScenes(y左+) で y 反転、yaw も符号反転
-        t = [float(x), float(-y), float(z)]
-        q = _yaw_deg_to_quat_wxyz(-float(yaw))
-        calib_json.append({
-            "token": c_token, "sensor_token": s_token,
-            "translation": t, "rotation": q,
-            "camera_intrinsic": [
-                [f, 0, config.IMG_W/2],
-                [0, f, config.IMG_H/2],
-                [0, 0, 1]
-            ]
+            "token": s_token,
+            "modality": "camera",
+            "name": cam_name,
+            "channel": cam_name
         })
 
+        t = [float(v) for v in config.CAM_CONFIGS[cam_name]["translation"]]
+        q = [float(v) for v in config.CAM_CONFIGS[cam_name]["rotation_wxyz"]]
+        K = config.CAM_CONFIGS[cam_name]["intrinsic"]
+
+        calib_json.append({
+            "token": c_token,
+            "sensor_token": s_token,
+            "translation": t,                 # nuScenes そのまま
+            "rotation": q,                    # nuScenes そのまま (w, x, y, z)
+            "camera_intrinsic": K             # nuScenes そのまま
+        })
+
+    # ---- レーダ（従来どおり；必要なら RADAR_CALIB に移行可能）----
     per_radar_tokens = {}
     radar_param_by_name = {name: (x, y, z, yaw) for (x, y, z, yaw, name) in config.RADAR_PARAMS}
     for rname in config.RADAR_NAMES:

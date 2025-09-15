@@ -81,40 +81,26 @@ def attach_cameras(world, bl, vehicle, sweeps_dir):
             captured[cam_name].append({"frame": frame, "path": path, "timestamp": ts})
         return callback
 
-    # [ADDED] CAM_PARAMS を name->param に引き直す（後方互換のため）
-    _param_by_name = {name: p for p, name in zip(config.CAM_PARAMS, config.CAM_NAMES)}
-
     for name in config.CAM_NAMES:
-        if hasattr(config, "CAM_CONFIGS") and name in config.CAM_CONFIGS:
-            # [ADDED] ==== nuScenes 実キャリブでスポーン ====
-            cal = config.CAM_CONFIGS[name]
-            # cfg は config.CAM_CONFIGS[name] から取り出した nuScenes の値
-            loc, rot = nus_cam_to_carla_transform(cal["translation"], cal["rotation_wxyz"])
-            bp = bl.find('sensor.camera.rgb')
-            
-            # intrinsics からFOV算出（既存の関数でOK）
-            if cal.get("intrinsic"):
-                fov = hfov_from_intrinsics(cal["intrinsic"], config.IMG_W)
-            else:
-                fov = config.CAM_DEFAULT_FOV
-            bp.set_attribute('image_size_x', str(config.IMG_W))
-            bp.set_attribute('image_size_y', str(config.IMG_H))
-            bp.set_attribute('fov', f'{hfov_from_intrinsics(cal["intrinsic"], config.IMG_W):.6f}')
-            bp.set_attribute('sensor_tick', str(config.CAM_SENSOR_TICK))
-            
-            actor = world.spawn_actor(bp, carla.Transform(loc, rot), attach_to=vehicle)
-            actor.listen(make_callback(name))
-            actors.append(actor)
-            make_directory(os.path.join(sweeps_dir, name))
+        cal = config.CAM_CONFIGS[name]
+        # cfg は config.CAM_CONFIGS[name] から取り出した nuScenes の値
+        loc, rot = nus_cam_to_carla_transform(cal["translation"], cal["rotation_wxyz"])
+        bp = bl.find('sensor.camera.rgb')
+        
+        # intrinsics からFOV算出（既存の関数でOK）
+        if cal.get("intrinsic"):
+            fov = hfov_from_intrinsics(cal["intrinsic"], config.IMG_W)
         else:
-            # [UNCHANGED] ==== 従来の CAM_PARAMS でスポーン ====
-            (x, y, z, yaw, fov_type) = _param_by_name[name]
-            bp = cam_110_bp if fov_type == "110" else cam_70_bp
-            trans = carla.Transform(carla.Location(x=x, y=y, z=z), carla.Rotation(yaw=yaw))
-            actor = world.spawn_actor(bp, trans, attach_to=vehicle)
-            actor.listen(make_callback(name))
-            actors.append(actor)
-            make_directory(os.path.join(sweeps_dir, name))
+            fov = config.CAM_DEFAULT_FOV
+        bp.set_attribute('image_size_x', str(config.IMG_W))
+        bp.set_attribute('image_size_y', str(config.IMG_H))
+        bp.set_attribute('fov', f'{hfov_from_intrinsics(cal["intrinsic"], config.IMG_W):.6f}')
+        bp.set_attribute('sensor_tick', str(config.CAM_SENSOR_TICK))
+        
+        actor = world.spawn_actor(bp, carla.Transform(loc, rot), attach_to=vehicle)
+        actor.listen(make_callback(name))
+        actors.append(actor)
+        make_directory(os.path.join(sweeps_dir, name))
 
     return actors, captured
 
