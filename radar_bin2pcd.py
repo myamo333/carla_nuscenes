@@ -113,7 +113,7 @@ def batch_convert_radar(bin_root: str) -> None:
 
 
 if __name__ == "__main__":
-    base = "./data/nuscenes_eval"
+    base = "./data/nuScenes"
     for sub in ("sweeps", "samples"):
         d = os.path.join(base, sub)
         if os.path.isdir(d):

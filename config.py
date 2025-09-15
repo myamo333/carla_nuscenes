@@ -24,8 +24,8 @@ LIDAR_LOWER_FOV = -30
 LIDAR_SENSOR_TICK = 1.0 / LIDAR_ROTATION_HZ
 
 # 出力
-BASE_DIR = "./data/nuscenes_eval"
-VERSION = "v1.0-eval"
+BASE_DIR = "./data/nuScenes"
+VERSION = "v1.0-test"
 
 # カメラ（元コードのまま）
 CAM_NAMES = [
