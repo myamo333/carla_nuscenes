@@ -107,15 +107,29 @@ RADAR_NAMES = [
     "RADAR_FRONT", "RADAR_FRONT_LEFT", "RADAR_FRONT_RIGHT",
     "RADAR_BACK_LEFT", "RADAR_BACK_RIGHT"
 ]
-# (x, y, z, yaw, name)
-RADAR_PARAMS = [
-    ( 2.0,  0.0, 1.0,    0, "RADAR_FRONT"),
-    ( 1.5, -0.7, 1.0,  -55, "RADAR_FRONT_LEFT"),
-    ( 1.5,  0.7, 1.0,   55, "RADAR_FRONT_RIGHT"),
-    (-1.5, -0.7, 1.0, -125, "RADAR_BACK_LEFT"),
-    (-1.5,  0.7, 1.0,  125, "RADAR_BACK_RIGHT"),
-]
 
+RADAR_CONFIGS = {
+    "RADAR_FRONT": {
+        "translation": [3.412, 0.0, 0.5],
+        "rotation_wxyz": [0.9999974259839071, 0.0, 0.0, -0.0022689260808398757],  
+    },
+    "RADAR_FRONT_LEFT": {
+        "translation": [2.422, 0.8, 0.78],
+        "rotation_wxyz": [0.7028982997921758, 0.0, 0.0, 0.7112903627557937], 
+    },
+    "RADAR_FRONT_RIGHT": {
+        "translation": [2.422, -0.8, 0.77],
+        "rotation_wxyz": [0.7087093341000862, 0.0, 0.0, -0.7055005880645404], 
+    },
+    "RADAR_BACK_LEFT": {
+        "translation": [-0.562, 0.628, 0.53],
+        "rotation_wxyz": [0.0458860416542946, 0.0, 0.0, 0.9989466808500344],  
+    },
+    "RADAR_BACK_RIGHT": {
+        "translation": [-0.562, -0.618, 0.53],
+        "rotation_wxyz": [0.04361938736533623, 0.0, 0.0, -0.9990482215818578], 
+    },
+}
 # LIDAR（元コードのまま）
 LIDAR_NAME = "LIDAR_TOP"
 

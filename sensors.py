@@ -104,6 +104,36 @@ def attach_cameras(world, bl, vehicle, sweeps_dir):
 
     return actors, captured
 
+def _nus_radar_to_carla_transform(translation, rotation_wxyz):
+    """
+    nuScenes calibrated_sensor:
+      - translation: [x,y,z]  (ego系: x前, y左, z上)
+      - rotation[w,x,y,z]: R_se（sensor→ego）
+    CARLA(親=車両)のローカル系: x前, y右, z上
+    Radar/LiDAR は nuScenes のセンサ軸 ≒ ego軸なので、軸入替は不要、y反転のみ。
+
+    回転変換の考え方:
+      v_carla = S_ego * v_ego
+      v_ego = R_se * v_sensor(nus)
+      v_sensor(carla) = S_ego * v_sensor(nus)  （センサ軸も y のみ反転）
+      ⇒ v_carla = (S_ego * R_se * S_ego) * v_sensor(carla)
+      よって R_car = S_ego * R_se * S_ego
+    CARLA に与える回転は「親(車)→子(センサ)」ではなく、センサ姿勢そのものなので
+    上式の R_car を roll/pitch/yaw に分解して渡せば良い。
+    """
+    # 平行移動: y 反転
+    x, y, z = [float(v) for v in translation]
+    loc = carla.Location(x=x, y=-y, z=z)
+
+    # 回転
+    qw, qx, qy, qz = [float(v) for v in rotation_wxyz]
+    R_se = _quat_wxyz_to_rotmat(qw, qx, qy, qz)
+    S = np.diag([1, -1, 1])            # nuScenes → CARLA の符号反転（yのみ）
+    R_car = S @ R_se @ S               # 上で導いた式
+    roll, pitch, yaw = _rotmat_to_rpy_deg(R_car)
+    rot = carla.Rotation(roll=roll, pitch=pitch, yaw=yaw)
+    return loc, rot
+
 def prepare_radar_bp(bl):
     bp = bl.find('sensor.other.radar')
     bp.set_attribute('horizontal_fov', str(config.RADAR_HFOV))
@@ -127,8 +157,12 @@ def attach_radars(world, bl, vehicle, sweeps_dir):
             captured[radar_name].append({"frame": frame, "path": path, "timestamp": ts})
         return callback
 
-    for x, y, z, yaw, rname in config.RADAR_PARAMS:
-        trans = carla.Transform(carla.Location(x=x, y=y, z=z), carla.Rotation(yaw=yaw))
+    for rname in config.RADAR_NAMES:
+        t = config.RADAR_CONFIGS[rname]["translation"]
+        q = config.RADAR_CONFIGS[rname]["rotation_wxyz"]
+        loc, rot = _nus_radar_to_carla_transform(t, q)
+        trans = carla.Transform(loc, rot)
+
         actor = world.spawn_actor(bp, trans, attach_to=vehicle)
         actor.listen(make_callback(rname))
         actors.append(actor)

@@ -98,7 +98,6 @@ def write_nuscenes_jsons(base_dir,
 
     # ---- レーダ（従来どおり；必要なら RADAR_CALIB に移行可能）----
     per_radar_tokens = {}
-    radar_param_by_name = {name: (x, y, z, yaw) for (x, y, z, yaw, name) in config.RADAR_PARAMS}
     for rname in config.RADAR_NAMES:
         s_token, c_token = str(uuid.uuid4()), str(uuid.uuid4())
         per_radar_tokens[rname] = (s_token, c_token)
@@ -106,12 +105,15 @@ def write_nuscenes_jsons(base_dir,
             "token": s_token, "modality": "radar",
             "name": rname, "channel": rname
         })
-        x, y, z, yaw = radar_param_by_name[rname]
-        t = [float(x), float(-y), float(z)]
-        q = _yaw_deg_to_quat_wxyz(-float(yaw))
+
+        # nuScenes 値をそのまま
+        t = [float(v) for v in config.RADAR_CONFIGS[rname]["translation"]]
+        q = [float(v) for v in config.RADAR_CONFIGS[rname]["rotation_wxyz"]]
+
         calib_json.append({
             "token": c_token, "sensor_token": s_token,
-            "translation": t, "rotation": q,
+            "translation": t,
+            "rotation": q,
             "camera_intrinsic": []
         })
 
