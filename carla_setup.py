@@ -13,6 +13,8 @@ def spawn_vehicle(world, bl):
     prius_bp = bl.find("vehicle.audi.tt")
     spawn = world.get_map().get_spawn_points()[0]
     prius = world.spawn_actor(prius_bp, spawn)
+    # loc = prius.get_transform().location
+    # print(f"[EGO] spawned at x={loc.x:.2f}, y={loc.y:.2f}, z={loc.z:.2f}")
     return prius
 # ーーーー ここから追加 ーーーー
 def _find_vehicle_bp(bl, preferred: str):

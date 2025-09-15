@@ -7,6 +7,7 @@ from carla_setup import init_world, spawn_vehicle, spawn_npc_ahead   # ★ 追�
 from sensors import attach_cameras, attach_radars, attach_lidar
 from timeline import compute_sample_times, pick_keyframes_and_copy
 from nuscenes_writer import write_nuscenes_jsons
+import carla
 
 def ensure_dirs():
     samples_dir = os.path.join(config.BASE_DIR, "samples")
@@ -26,9 +27,16 @@ def main():
     # CARLA
     client, world, bl = init_world()
     prius = spawn_vehicle(world, bl)
+    ego_spawn_tf = prius.get_transform() 
 
     # ★ 前方NPCを必要ならスポーン
     npc_actor = None
+    pedestrian = None
+    blueprint_library = world.get_blueprint_library()
+    pedestrian_bp = blueprint_library.find('walker.pedestrian.0003')
+    spawn_points_ped = carla.Transform(carla.Location(x=-6.45, y=157.19, z=1), carla.Rotation(yaw=0))
+    # pedestrian = world.spawn_actor(pedestrian_bp, spawn_points_ped)
+    pedestrian = world.try_spawn_actor(pedestrian_bp, spawn_points_ped)
     if getattr(config, "NPC_ENABLED", False):
         npc_actor = spawn_npc_ahead(
             world, bl, prius,
@@ -36,6 +44,8 @@ def main():
             autopilot=config.NPC_AUTOPILOT,
             z_offset=getattr(config, "NPC_SPAWN_Z_OFFSET", 0.5),
         )
+        loc = npc_actor.get_transform().location
+        # print(f"[EGO] spawned at x={loc.x:.2f}, y={loc.y:.2f}, z={loc.z:.2f}")
 
     samples_dir, sweeps_dir = ensure_dirs()
 
