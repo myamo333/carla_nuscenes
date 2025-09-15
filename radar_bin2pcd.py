@@ -55,6 +55,7 @@ def convert_bin_to_nuscenes_pcd(bin_path: str, pcd_path: str) -> None:
 
     pts = scan.reshape(-1, 4)
     depth, az, alt, vel = pts.T
+    vel = np.clip(vel, -80.0, 80.0)  # センサ仕様を越えない程度に
 
     # 位置
     x, y, z = _carla_polar_to_nuscenes_xyz(depth, az, alt)
