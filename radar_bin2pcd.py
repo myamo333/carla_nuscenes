@@ -10,8 +10,8 @@ _PCD_HEADER = (
     "FIELDS x y z dyn_prop id rcs vx vy vx_comp vy_comp "
     "is_quality_valid ambig_state x_rms y_rms invalid_state pdh0 vx_rms vy_rms\n"
     "SIZE 4 4 4 1 2 4 4 4 4 4 1 1 1 1 1 1 1 1\n"
-    # nuScenes 実ファイルと同じ TYPE（U ではなく I）
-    "TYPE F F F I I F F F F F I I I I I I I I\n"
+    # nuScenes は 1/2byte 整数を unsigned として扱う実装が一般的
+    "TYPE F F F U U F F F F F U U U U U U U U\n"
     "COUNT 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1\n"
     "WIDTH {n}\n"
     "HEIGHT 1\n"
@@ -21,9 +21,9 @@ _PCD_HEADER = (
 )
 
 # 1点のパック形式（合計 43 bytes/point）
-# <fff  b   h   f   f   f   f   f   b  b  b  b  b  b  b  b
+# <fff  B   H   f   f   f   f   f   B  B  B  B  B  B  B  B
 #  x,y,z dyn id  rcs vx  vy  vx_c vy_c iq as xr yr inv pd vxr vyr
-_PACK = struct.Struct('<fff b h f f f f f b b b b b b b b').pack
+_PACK = struct.Struct('<fff B H f f f f f B B B B B B B B').pack
 
 
 def _carla_polar_to_nuscenes_xyz(depth, az, alt):
@@ -38,10 +38,11 @@ def _carla_polar_to_nuscenes_xyz(depth, az, alt):
     return x.astype(np.float32), y.astype(np.float32), z.astype(np.float32)
 
 
-def convert_bin_to_nuscenes_pcd(bin_path: str, pcd_path: str) -> None:
+def convert_bin_to_nuscenes_pcd(bin_path: str, pcd_path: str, vel_abs_limit: float = 250.0) -> None:
     """
-    Carla radar .bin (float32: depth, azimuth[rad], altitude[rad], velocity[m/s])
+    Carla radar .bin (float32: depth, azimuth[rad], altitude[rad], velocity[m/s]想定)
       -> nuScenes互換 PCD(binary, 18 fields)
+    速度列が破綻している場合は自動で vx, vy を 0 にフォールバック。
     """
     scan = np.fromfile(bin_path, dtype=np.float32)
     if scan.size == 0:
@@ -54,26 +55,30 @@ def convert_bin_to_nuscenes_pcd(bin_path: str, pcd_path: str) -> None:
         raise ValueError(f"{bin_path}: float32の数が4の倍数ではありません（{scan.size}）")
 
     pts = scan.reshape(-1, 4)
-    depth, az, alt, vel = pts.T
-    vel = np.clip(vel, -80.0, 80.0)  # センサ仕様を越えない程度に
+    depth, az, alt, vel_guess = pts.T
+
+    # --- 速度列の妥当性チェック（破綻検知） ---
+    invalid_mask = ~np.isfinite(vel_guess) | (np.abs(vel_guess) > vel_abs_limit)
+    use_velocity = invalid_mask.mean() <= 0.25
+    vel = vel_guess.astype(np.float32) if use_velocity else np.zeros_like(vel_guess, dtype=np.float32)
 
     # 位置
     x, y, z = _carla_polar_to_nuscenes_xyz(depth, az, alt)
     n = x.shape[0]
 
-    # 速度（視線速度を平面へ簡易投影。yは左+系に合わせて符号反転）
+    # 速度（視線速度を平面へ投影。yは左+系に合わせて符号反転）
     vx = (vel * np.cos(az) * np.cos(alt)).astype(np.float32)
     vy = (-vel * np.sin(az) * np.cos(alt)).astype(np.float32)
     vx_comp = vx.copy()
     vy_comp = vy.copy()
 
-    # 残りのフィールド（最低限の妥当値）
-    dyn_prop = np.zeros(n, dtype=np.int8)        # 0:moving 相当
-    ids      = np.arange(n, dtype=np.int16)
+    # 残りのフィールド（unsigned で作成）
+    dyn_prop = np.zeros(n, dtype=np.uint8)
+    ids      = np.arange(n, dtype=np.uint16)
     rcs      = np.zeros(n, dtype=np.float32)
-    is_quality_valid = np.ones(n, dtype=np.int8) # 1=valid
-    ambig_state      = np.full(n, 3, dtype=np.int8)  # 3=unambiguous（既定フィルタ通過）
-    x_rms = y_rms = invalid_state = pdh0 = vx_rms = vy_rms = np.zeros(n, dtype=np.int8)
+    is_quality_valid = np.ones(n, dtype=np.uint8)
+    ambig_state      = np.full(n, 3, dtype=np.uint8)
+    x_rms = y_rms = invalid_state = pdh0 = vx_rms = vy_rms = np.zeros(n, dtype=np.uint8)
 
     # 出力
     with open(pcd_path, 'wb') as f:
