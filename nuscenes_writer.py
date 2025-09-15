@@ -13,6 +13,30 @@ def _yaw_deg_to_quat_wxyz(yaw_deg: float):
     half = math.radians(yaw_deg) / 2.0
     return [math.cos(half), 0.0, 0.0, math.sin(half)]
 
+def _k_from_carla_fov(img_w, img_h, hfov_deg):
+    # CARLA はスクエアピクセル。水平FOVから fx を決め、fy も同じ値でOK。
+    fx = 0.5 * img_w / math.tan(math.radians(hfov_deg / 2.0))
+    fy = fx
+    cx, cy = img_w / 2.0, img_h / 2.0
+    return [[fx, 0.0, cx],
+            [0.0, fy, cy],
+            [0.0, 0.0, 1.0]]
+
+def hfov_from_intrinsics(K, img_w: int) -> float:
+    """
+    nuScenesのカメラ内参(K)から水平FOV[deg]を返す。
+    K = [[fx, 0,  cx],
+         [0,  fy, cy],
+         [0,  0,   1]]
+    ※CARLAは正方画素前提なのでfxから水平FOVを計算すれば十分。
+    """
+    if K is None or len(K) < 1 or len(K[0]) < 1:
+        raise ValueError("Invalid intrinsics K")
+    fx = float(K[0][0])
+    if fx <= 0:
+        raise ValueError(f"Invalid fx={fx} in intrinsics")
+    return math.degrees(2.0 * math.atan(img_w / (2.0 * fx)))
+
 def write_nuscenes_jsons(base_dir,
                          sample_times,
                          key_img_for_idx,
@@ -71,31 +95,29 @@ def write_nuscenes_jsons(base_dir,
 
     # ---- カメラ: config.CAM_CONFIGS をそのまま出力 ----
     for cam_name in config.CAM_NAMES:
-        if cam_name not in config.CAM_CONFIGS:
-            raise KeyError(f"config.CAM_CONFIGS に {cam_name} の定義がありません。")
-
         s_token, c_token = str(uuid.uuid4()), str(uuid.uuid4())
         per_cam_tokens[cam_name] = (s_token, c_token)
-
         sensor_json.append({
-            "token": s_token,
-            "modality": "camera",
-            "name": cam_name,
-            "channel": cam_name
+            "token": s_token, "modality": "camera",
+            "name": cam_name, "channel": cam_name
         })
 
-        t = [float(v) for v in config.CAM_CONFIGS[cam_name]["translation"]]
-        q = [float(v) for v in config.CAM_CONFIGS[cam_name]["rotation_wxyz"]]
-        K = config.CAM_CONFIGS[cam_name]["intrinsic"]
+        # 位置・姿勢は（これまで通り）nuScenes基準の値を出力
+        cal = config.CAM_CONFIGS[cam_name]
+        t = cal["translation"]                # nuScenes: [x, y, z] (yは左+)
+        q = cal["rotation_wxyz"]              # nuScenes: [w, x, y, z] (sensor→ego)
+
+        # ★ K は “CARLA 実機” に合わせる（主点は画像中心）
+        #   FOV は sensors.attach_cameras で nuScenes の K から算出してカメラに設定済み。
+        #   同じ hfov を使って K を再計算して書き出す。
+        hfov = hfov_from_intrinsics(cal["intrinsic"], config.IMG_W)
+        K_out = _k_from_carla_fov(config.IMG_W, config.IMG_H, hfov)
 
         calib_json.append({
-            "token": c_token,
-            "sensor_token": s_token,
-            "translation": t,                 # nuScenes そのまま
-            "rotation": q,                    # nuScenes そのまま (w, x, y, z)
-            "camera_intrinsic": K             # nuScenes そのまま
-        })
-
+        "token": c_token, "sensor_token": s_token,
+        "translation": t, "rotation": q,
+        "camera_intrinsic": K_out
+    })
     # ---- レーダ（従来どおり；必要なら RADAR_CALIB に移行可能）----
     per_radar_tokens = {}
     for rname in config.RADAR_NAMES:
@@ -122,10 +144,13 @@ def write_nuscenes_jsons(base_dir,
         "token": lidar_s_token, "modality": "lidar",
         "name": config.LIDAR_NAME, "channel": config.LIDAR_NAME
     })
-    # LIDAR mount (sensors.attach_lidar): (0,0,2.5), yaw=0
+
+    t_lidar = [float(v) for v in config.LIDAR_CONFIGS[config.LIDAR_NAME]["translation"]]
+    q_lidar = [float(v) for v in config.LIDAR_CONFIGS[config.LIDAR_NAME]["rotation_wxyz"]]
+
     calib_json.append({
         "token": lidar_c_token, "sensor_token": lidar_s_token,
-        "translation": [0.0, 0.0, 2.5], "rotation": _yaw_deg_to_quat_wxyz(0.0),
+        "translation": t_lidar, "rotation": q_lidar,
         "camera_intrinsic": []
     })
 

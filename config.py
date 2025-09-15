@@ -133,12 +133,19 @@ RADAR_CONFIGS = {
 # LIDAR（元コードのまま）
 LIDAR_NAME = "LIDAR_TOP"
 
+LIDAR_CONFIGS = {
+    "LIDAR_TOP": {
+        "translation": [0.985793, 0.0, 1.84019],
+        "rotation_wxyz": [0.706749235646644, -0.015300993788500868, 0.01739745181256607, -0.7070846669051719],
+    }
+}
+
 # サンプル時刻
 SAMPLE_INTERVAL_US = 500_000  # 0.5s
 
 # ===== NPC (前方に置く車) =====
 NPC_ENABLED = True               # 置きたいとき True
 NPC_MODEL = "vehicle.tesla.model3"  # 見つからなければ自動で別モデルを試します
-NPC_AHEAD_METERS = 10.0          # 自車（Prius）の前方距離[m]
+NPC_AHEAD_METERS = 15.0          # 自車（Prius）の前方距離[m]
 NPC_AUTOPILOT = False            # True にすると交通流に乗って走ります
 NPC_SPAWN_Z_OFFSET = 0.5         # 地面から少し浮かせてスポーン（地面貫通防止）

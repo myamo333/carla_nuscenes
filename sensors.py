@@ -181,9 +181,39 @@ def prepare_lidar_bp(bl):
     bp.set_attribute('sensor_tick', str(config.LIDAR_SENSOR_TICK))
     return bp
 
+def _nus_lidar_to_carla_transform(translation, rotation_wxyz):
+    """
+    nuScenes calibrated_sensor:
+      translation: [x,y,z] (ego: x前, y左, z上)
+      rotation[w,x,y,z]: R_se (sensor→ego)
+
+    CARLA(親=車両)のローカル: x前, y右, z上
+
+    Radar と同じく、センサ軸 ≒ ego軸なので軸入替不要。
+    ただし y の符号反転が必要。
+    回転: R_car = S * R_se * S,  S = diag(1,-1,1)
+    """
+    # 平行移動: y 反転
+    x, y, z = [float(v) for v in translation]
+    loc = carla.Location(x=x, y=-y, z=z)
+
+    # 回転
+    qw, qx, qy, qz = [float(v) for v in rotation_wxyz]
+    R_se = _quat_wxyz_to_rotmat(qw, qx, qy, qz)
+    S = np.diag([1, -1, 1])
+    R_car = S @ R_se @ S
+    roll, pitch, yaw = _rotmat_to_rpy_deg(R_car)
+    rot = carla.Rotation(roll=roll, pitch=pitch, yaw=yaw)
+    return loc, rot
+
 def attach_lidar(world, bl, vehicle, sweeps_dir):
     bp = prepare_lidar_bp(bl)
-    trans = carla.Transform(carla.Location(x=0.0, y=0.0, z=2.5), carla.Rotation(yaw=0))
+
+    t = config.LIDAR_CONFIGS[config.LIDAR_NAME]["translation"]
+    q = config.LIDAR_CONFIGS[config.LIDAR_NAME]["rotation_wxyz"]
+    loc, rot = _nus_lidar_to_carla_transform(t, q)
+    trans = carla.Transform(loc, rot)
+
     actor = world.spawn_actor(bp, trans, attach_to=vehicle)
     captured = []
 
@@ -199,8 +229,7 @@ def attach_lidar(world, bl, vehicle, sweeps_dir):
         )
         make_directory(os.path.dirname(path))
 
-        # 現状: CARLAは (x,y,z,intensity) の4floatで来る（CARLA軸: x前+, y右+, z上+）
-        # frombuffer は読み取り専用なので、後段の変換のために copy() で書き込み可能にする。
+        # CARLA: (x,y,z,intensity)[float32]  →  nuScenes: y 反転 + ring列追加(0埋め) の 5float
         pts4 = np.frombuffer(lidar_data.raw_data, dtype=np.float32).reshape(-1, 4).copy()
         # nuScenes軸: x前+, y左+, z上+ → y を反転
         pts4[:, 1] *= -1.0
